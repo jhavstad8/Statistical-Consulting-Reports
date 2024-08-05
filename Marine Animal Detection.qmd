@@ -1,0 +1,436 @@
+---
+title: "Analysis Examples"
+format: html
+editor: visual
+self-contained: true
+---
+
+# Load Packages
+
+```{r, results = F}
+#| message: false
+# you may need to install these packages before calling the library() function. To do so, you can use the commented code below
+# install.packages("tidyverse")
+# install.packages("emmeans")
+# install.packages("multcomp")
+# install.packages("car")
+# install.packages("arm")
+
+# For data manipulation
+library(tidyverse)
+
+# For calculating predicted probabilities
+library(emmeans)
+library(multcomp)
+
+# For calculating significance of the effects (Anova function)
+library(car)
+
+# For the advanced model for rockfish
+library(arm)
+```
+
+# Read in data
+
+```{r}
+# Read in long-formatted data
+underwater_audio <- read_csv(here::here("Short2.csv"))
+
+# Convert Y/N into TRUE/FALSE for modeling
+underwater_audio <- underwater_audio %>% 
+  mutate(Grey = Grey == "Y",
+         Rock = Rock == "Y",
+         Odont = Odont == "Y",
+         Sealion = Sealion == "Y",
+         Hump = Hump == "Y")
+
+# create variables which indicate which seasons the animals appeared in
+underwater_audio <- mutate(underwater_audio,
+       incl.hump = Season %in% c("Fall","Spring","Summer"),
+       incl.grey = Season %in% c("Winter"),
+       incl.odont = Season %in% c("Summer"),
+       incl.sl = Season %in% c("Spring","Summer"))
+```
+
+# Probability, Odds, and Odds Ratio
+
+Here, we just wanted to provide a quick refresher on all these probability terms to help you with the interpretations from these models.
+
+## Probability
+
+Probabilities are a numeric values that range from 0 to 1, indicating the proportion of the time that event occurs in the long run.
+
+$\text{probability} = p = \frac{2}{3}$
+
+For example, the probability that the temperature exceeds 70 degrees on a randomly selected day is 2/3, or 0.67. This means two-thirds of all days exceed 70 degrees.
+
+## Odds
+
+Unlike probabilities, odds range from 0 to infinity.
+
+### High Probability
+
+From the probability specified above (2/3), we can calculate the odds that the temperature exceeds 70 degrees on a randomly selected day:
+
+$\text{odds} = \frac{p}{1 - p} = \frac{2/3}{1/3} = 2$
+
+In this case, the odds that the temperature exceeds 70 degrees on a randomly selected day is "2-to-1". This means that it is twice as likely for the temperature to exceed 70 degrees than not (this makes sense because 2/3 is exactly double 1/3). In other words, odds tells you how much more likely an event is to happen than to not happen.
+
+### Medium Probability
+
+If the probability were to be $p = \frac{1}{2}$ instead, then the odds would be equal to exactly 1:
+
+$\text{odds} = \frac{p}{1 - p} = \frac{1/2}{1/2} = 1$
+
+This means that the odds are "1-to-1", meaning the event is just as likely to happen as not happen.
+
+### Low Probability
+
+Finally, if the the probability is below 0.5 (say for example $p = \frac{1}{10}$), then the odds are below 1:
+
+$\text{odds} = \frac{p}{1 - p} = \frac{1/10}{9/10} = \frac{1}{9} = 0.111$
+
+This means the odds are "0.111-to-1", meaning that for every one time the event does **not** occur, the event occurs 0.111 times.
+
+This wording is slightly confusing, but another way to phrase it is that for every one time the event occurs, the event does not occur nine times ("1-to-9").
+
+## Log Odds
+
+Computer programs, such as R, will display results on the natural log (log base e, denoted "ln") scale, by taking the (natural) log of the odds. The log-odds scale ranges from negative infinity to positive infinity.
+
+Probabilities closer to zero produce log-odds closer to negative infinity. Probabilities closer to one produce log-odds closer to positive infinity. See the summary table below for confirmation.
+
+### High Probability
+
+$\text{probability} = p = \frac{2}{3}$
+
+$\text{log-odds} = ln(odds) = ln(\frac{p}{1 - p}) = ln(\frac{2/3}{1/3}) = ln(2) = 0.693$
+
+### Medium Probability
+
+$\text{probability} = p = \frac{1}{2}$
+
+$\text{log-odds} = ln(odds) = ln(\frac{p}{1 - p}) = ln(\frac{1/2}{1/2}) = ln(1) = 0$
+
+### Low Probability
+
+$\text{probability} = p = \frac{1}{10}$
+
+$\text{log-odds} = ln(odds) = ln(\frac{p}{1 - p}) = ln(\frac{1/10}{9/10}) = ln(1/9) = -2.197$
+
+### Summary Table
+
+| Probability | Odds  | Log Odds |
+|-------------|-------|----------|
+| 1/10        | 0.111 | -2.197   |
+| 1/3         | 0.5   | -0.693   |
+| 1/2         | 1     | 0        |
+| 2/3         | 2     | 0.693    |
+| 9/10        | 9     | 2.197    |
+
+## Odds Ratio
+
+**The interpretations we provide you with for your analysis are interpretations of odds ratios.** Go to the "Coefficient Interpretations" section to see the specific interpretations for your project after reading about Odds Ratios.
+
+Let's say, for example, that the probability that the temperature exceeds 70 degrees on a randomly selected day differs in the Summer and Winter. Assume there's a 90% chance of a 70-degree day in the summer but only a 67% chance in the winter.
+
+$p_{s} = \frac{9}{10}$
+
+$p_{w} = \frac{2}{3}$
+
+From those probabilities, we can calculate odds:
+
+$\text{odds}_s = \frac{0.9}{0.1} = 9$
+
+$\text{odds}_w = \frac{2/3}{1/3} = 2$
+
+### Summer vs. Winter
+
+From Odds, we can calculate an odds ratio which compares the odds of something happening under two different circumstances:
+
+$\text{odds ratio} = \frac{\text{odds under condition A}}{\text{odds under condition B}} = \frac{\text{odds}_s}{\text{odds}_w} = \frac{9}{\text{2}} = 4.5$
+
+The season being Summer is associated with **multiplying** the odds that the temperature exceeds 70 degrees on a randomly selected day by 4.5 compared to Winter.
+
+$\text{Percentage change in odds} = (\text{odds ratio} - 1) * 100 = (4.5 - 1) * 100 = 350$
+
+The season being Summer is associated with **increasing** the odds that the temperature exceeds 70 degrees on a randomly selected day by 350% compared to Winter.
+
+### Winter vs. Summer
+
+You could just as easily invert the odds ratio and interpret in the other direction (note that winter is now in the numerator):
+
+$\text{odds ratio} = \frac{\text{odds}_w}{\text{odds}_s} = \frac{2}{\text{9}} = 0.2222$
+
+The season being Winter is associated with multiplying the odds that the temperature exceeds 70 degrees on a randomly selected day by 0.222 compared to Summer.
+
+$\text{Percentage change in odds} = (\text{odds ratio} - 1) * 100 = (0.222 - 1) * 100 = -77.78$
+
+The season being Winter is associated with **decreasing** the odds that the temperature exceeds 70 degrees on a randomly selected day by 77.78% compared to Summer.
+
+### Log Odds Ratio
+
+In R, all coefficient estimates of the logistic model (except for the intercept) are automatically given as log-odds ratios. The intercept is automatically given as a log-odds, as described above. The log odds-ratio is quite similar to the odds ratio: we simply take the natural log to get from odds ratio to log-odds ratio. To get from log-odds ratio to odds ratio, we exponentiate using the `exp()` command in R.
+
+We can calculate an log odds ratio which compares the log odds of something happening under two different circumstances:
+
+$\text{log odds ratio} = ln(\frac{\text{odds under condition A}}{\text{odds under condition B}}) = ln(\frac{\text{odds}_s}{\text{odds}_w}) = ln(\frac{9}{\text{2}}) = 1.5041$
+
+The interpretation of log-odds ratio is not very meaningful in context, so we exponentiate the log-odds ratios to instead use the odds ratio:
+
+$\text{odds ratio} = exp(\text{log odds ratio}) = exp(1.5041) = 4.5$
+
+$exp(x) = e^{x}$, which is the opposite of the natural log.
+
+Note that this is the same value (4.5) that we calculated in the Odds Ratio section.
+
+# Humpbacks
+
+## Model
+
+This model assumes independent errors for all observations (i.e. that one time point does not depend on those adjacent to it). Although our analysis found some dependence between adjacent time periods in the same season, the independent errors model has similar results to the model with correlation between adjacent times. Thus, we use the independent model because it is simpler (and can be done in R!).
+
+```{r}
+# Define humpback model
+humpback_model <- glm(
+  
+  # Response Variable: Whether or not humpback was detected
+  # Explanatory Variables: Season, Time of Day, Interaction between the two
+  Hump ~ Season * Light,
+  
+  # Use logistic regression
+  family = binomial(link = "logit"),
+  
+  # Subset to only the seasons where Humpbacks were present
+  subset=incl.hump,
+  
+  # Use underwater audio data
+  data = underwater_audio
+  )
+
+# Show individual coefficients in summary
+summary(humpback_model)
+
+# Examine statistical significance of explanatory variables
+Anova(humpback_model) 
+```
+
+From the Analysis of Deviance Table, we see that only Season is statistically significant at alpha = 0.01.
+
+## Coefficient Interpretations
+
+```{r}
+# Define coefficients from output above
+spring_coef <- -2.0715
+summer_coef <- -3.8532
+
+# Pecentage change in odds of detection in Spring vs. Fall
+round((exp(spring_coef) - 1) * 100, 2)
+
+# Percentage change in odds of detection in Summer vs. Fall
+round((exp(summer_coef) - 1) * 100, 2)
+```
+
+After adjusting for the time of day, the Spring season is associated with decreasing the odds of detecting at least one humpback whale vocalization in a 30 minute time window by 87.4% compared to the Fall season.
+
+After adjusting for the time of day, the Summer season is associated with decreasing the odds of detecting at least one humpback whale vocalization in a 30 minute time window by 97.88% compared to the Fall season.
+
+## Probabilities by Season
+
+```{r}
+# Only Season is statistically significant at alpha = 0.01
+
+# Predicted probabilities by Season with a letter chart
+humpback.means <- emmeans(humpback_model, ~Season,adjust="sidak", level=0.99)
+humpback_letter <- cld(humpback.means,type="response",alpha=0.01)
+
+# Show the letter chart
+humpback_letter
+# Show the corresponding plot comparing mean probabilities
+plot(humpback_letter)
+```
+
+In Summer, the probability of detecting at least one humpback whale vocalization in a 30 minute time window is 0.0913.
+
+In Spring, the probability of observing at least one humpback whale in a 30 minute time window is 0.2428.
+
+In Fall, the probability of observing at least one humpback whale in a 30 minute time window is 0.8055.
+
+The output additionally shows that Spring and Summer are in "group 1" and Fall is in "group 2". This means the following:
+
+-   There is a statistically significant difference in the likelihood of humpback detection in Spring and Fall (group 1 vs. group 2).
+-   There is a statistically significant difference in the likelihood of humpback detection in Summer and Fall (group 1 vs. group 2).
+-   There is **not** a statistically significant difference in the likelihood of humpback detection in Spring and Summer (group 1 vs. group 1).
+
+# Rockfish
+
+## Model
+
+This model also assumes independent errors for all observations (i.e. that one time point does not depend on those adjacent to it). Due to instances where there were no detections for certain season-light combinations, we used a more advanced model, but no worries, it still yields the same interpretations.
+
+```{r}
+# Define rockfish model 
+rock3 <- bayesglm(
+  
+  # Predict rockfish presence from Season, Light, and their interaction
+  Rock ~ Season * Light,
+  
+  # Use logistic regression
+  family = binomial(link="logit"),
+  
+  # Use underwater audio data
+  data = underwater_audio
+  
+  )
+
+summary(rock3)
+Anova(rock3)
+
+# Predicted probabilities for the Season main effect
+# rock3.means.s <- emmeans(rock3,~Season,adjust="sidak",level=0.99)
+# cld(rock3.means.s,type="response",alpha=0.01)
+
+# Predicted probabilities for the Light main effect
+# rock3.means.l <- emmeans(rock3,~Light,adjust="sidak",level=0.99)
+# cld(rock3.means.l,type="response",alpha=0.01)
+
+# Predicted probabilities for all combinations of Season and Light
+rock3.means.sl <- emmeans(rock3,~Season*Light,adjust="sidak",level=0.99)
+rock_letter <- cld(rock3.means.sl,type="response",alpha=0.01)
+
+# Show the letter chart
+rock_letter
+# Show the corresponding plot comparing mean probabilities
+plot(rock_letter)
+```
+
+## Probabilities
+
+For rockfish, we will focus on the probabilities instead of the coefficients.
+
+Here are the statistically significant differences:
+
+-   Summer Night : Summer Day
+-   Summer Night : Spring Day
+-   Summer Night : Fall Day
+-   Summer Night : Winter Day
+-   Summer Night : Winter Night
+-   Spring Night : Spring Day
+-   Spring Night : Fall Day
+-   Spring Night : Winter Day
+-   Spring Night : Winter Night
+
+As mentioned previously, these differences were found by looking at the "group column" in the output above. Summer night is marked as "group 3," but Winter day is marked as "group 1." This means that there is a statistically significant difference in terms of the likelihood of detecting a rockfish between those combinations of season and light.
+
+There are some combinations which are a part of multiple groups, such as Spring night, which is in groups 2 and 3. This means that this specific combination only has a statistically significant difference to combinations from group 1 only. Any combination which is part of group 2 or 3, such as Summer day or Fall night, are not viewed as being significantly different in terms of the likelihood of rockfish detection.
+
+| Season | Probability in Day | Probability in Night |
+|--------|--------------------|----------------------|
+| Spring | 0.1221             | 0.9824               |
+| Summer | 0.1734             | 0.9846               |
+| Fall   | 0.0707             | 0.3644               |
+| Winter | 0.0128             | 0.0690               |
+
+Regarding the actual interpretations of the probabilities, this is how we can interpret them:
+
+-   In Spring and during the day, the probability of detecting at least one rockfish vocalization in a 30 minute time window is .1221.
+
+-   In Spring and during the night, the probability of detecting at least one rockfish vocalization in a 30 minute time window is .9824.
+
+-   In Summer and during the day, the probability of detecting at least one rockfish vocalization in a 30 minute time window is .1734.
+
+-   In Summer and during the night, the probability of detecting at least one rockfish vocalization in a 30 minute time window is .9846.
+
+-   In Fall and during the day, the probability of detecting at least one rockfish vocalization in a 30 minute time window is .0707.
+
+-   In Fall and during the night, the probability of detecting at least one rockfish vocalization in a 30 minute time window is .3644.
+
+-   In Winter and during the day, the probability of detecting at least one rockfish vocalization in a 30 minute time window is .0128.
+
+In Winter and during the night, the probability of detecting at least one rockfish vocalization in a 30 minute time window is .0690.
+
+## Notes about Rockfish Observations
+
+```{r}
+ftable(xtabs(~Rock+Light+Season,data=underwater_audio,drop.unused.levels=TRUE,na.action=na.pass))
+```
+
+Something to note regarding the rockfish model is that Summer night and Spring night are the only combinations which are significantly different from other combinations. This may be due to the fact that for Summer and Spring, there were rockfish detections in every single time point during the night. This can be seen from the output above. For example, looking at the "Season = Spring" output, for the "N" row to represent night, there are 0 FALSE detections and 18 TRUE detections. This means that of the 18 30-minute time windows recorded in the night during the Spring season, all 18 detected a rockfish.
+
+This could be the reason why our model only detects the two combinations of Summer night and Spring night as different from the rest. This may be something to think about in terms of why that happened.
+
+We used a bayesglm() model for Rockfish to deal with this potential issue. In the data we have collected, the sample proportion for detecting a rockfish during a winter day is 0, and the sample proportion for detecting a rockfish during either spring night or summer night is 1. However, you may have noticed that in our output, the predicted probabilities for these combinations were .0128 for winter day and .98 for spring and summer night. This is because the bayesglm() model we chose does not allow for predicted probabilities of 0 or 1. Thus, our model is able to better estimate the probability of detecting a rockfish for those specific season and light combinations, and we can estimate how they differ from other combinations better. This is only an issue if there is no way that a rockfish could be detected during the winter day, or if a rockfish will always be detected during a spring or summer night. For analysis of the other animals, we recommend using the glm() model used in the humpback analysis rather than the bayesglm() model.
+
+# Odontocetes Model
+
+```{r}
+odont_model <- glm(
+  # Response Variable: Whether or not odontocetes were detected
+  # Explanatory Variable: Time of Day
+  Odont ~ Light,
+  
+  # Use logistic regression
+  family = binomial(link = "logit"),
+  
+  # Subset to only the seasons where Odontocetes were present
+  subset=incl.odont,
+  
+  # Use underwater audio data
+  data = underwater_audio
+  )
+
+# Show individual coefficients in summary
+summary(odont_model)
+
+# Examine statistical significance of explanatory variables
+Anova(odont_model) 
+
+# predicted probabilities for Light
+odont.means <- emmeans(odont_model, ~Light,adjust="sidak", level=0.99)
+cld(odont.means,type="response",alpha=0.01)
+
+```
+
+# Grey Whales Model
+
+```{r}
+ grey_model <- glm(
+  
+  # Response Variable: Whether or not grey whales were detected
+  # Explanatory Variable: Time of Day
+  Grey ~ Light,
+  
+  # Use logistic regression
+  family = binomial(link = "logit"),
+  
+  # Subset to only the seasons where Grey Whales were present
+  subset=incl.grey,
+  
+  # Use underwater audio data
+  data = underwater_audio
+  )
+
+# Show individual coefficients in summary
+summary(grey_model)
+
+# Examine statistical significance of explanatory variables
+Anova(grey_model) 
+
+# predicted probabilities for Light
+grey.means <- emmeans(grey_model, ~Light,adjust="sidak", level=0.99)
+cld(grey.means,type="response",alpha=0.01)
+
+```
+
+# Sea Lion Model
+
+For the sea lion model, analysis was performed in SAS since R cannot incorporate both 1) the binary distribution of the acoustic detections (present/absent) as well as 2) accounting for dependent time points. A generalized linear mixed model was run in SAS with a binary response (present/absent) and logit link function (meaning interpretations follow log-odds → odds → probability framework as described at the beginning of the document) with an AR(1) autocorrelation structure. The AR(1) structure was to account for the fact that the observations (each 30-minute file) that were closer in time to each other were more related than observations further apart in time from each other.
+
+Running this model in SAS, we did not have evidence that the main effect of light or season or the Light:Season interaction is statistically significant. The table below shows the Type III Tests of Fixed Effects where all p-values are non-significant.
+
+|               |             |
+|---------------|-------------|
+| **Effect**    | **P-value** |
+| Season        | .1793       |
+| Light         | .1135       |
+| Season\*Light | .4304       |
