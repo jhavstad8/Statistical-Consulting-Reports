@@ -1,0 +1,366 @@
+---
+title: "Coyotes Analysis"
+format: 
+  html:
+    embed-resources: True
+editor: visual
+---
+
+## Necessary Libraries
+
+```{r}
+# these libraries will be necessary to run the code throughout the document
+library(tidyverse)
+library(readxl)
+library(nlme)
+library(multcomp)
+library(emmeans)
+library(car)
+library(multcompView)
+```
+
+The libraries in the code chunk above are essential to being able to run the code provided in this document. If you do not have the libraries previously installed, you will have to use the install.packages() function to do so. For example, if you do not have the package "tidyverse" downloaded, you will have to run code which looks like:
+
+install.packages("tidyverse")
+
+This can be done either in a code chunk or in the R console.
+
+## Importing the Data
+
+```{r}
+# import each sheet from the excel file
+# these sheets have correctly changed the extra "site 7" to "site 6" on both sheets
+distance <- read_excel("Copy of coyotes.xlsx", sheet = "Distance")
+behaviors <- read_excel("Copy of coyotes.xlsx", sheet = "Behaviors")
+```
+
+## Formatting the Data
+
+Before running the analysis, we must ensure the data is formatted and cleaned properly. To do so, I have provided the code below which formats both the "distance" and "behaviors" sheets from the excel file which you had provided. One thing to note is that these sheets corrected the row which had put site 7 instead of site 6 for the last observation of footprint 1.
+
+```{r}
+# turn footprint, trial, and site variables to factor variables and clean variable names
+# Total represents the total amount of time recorded in each video/row
+# slice() removes the rows with NA values at the bottom of the sheet
+distance <- distance %>%
+  mutate_at(vars(Footprint, Trial, Site), as.factor) %>%
+   rename(
+    On = "Time Spent On Bait",
+    Close = "Time Spent Close To Bait",
+    Far = "Time Spent Far From Bait"
+  ) %>%
+  slice(-c(32:35))
+
+head(distance)
+```
+
+```{r}
+# turn footprint, trial, and site variables to factor variables and clean variable names
+# Total represents the total amount of time recorded in each video/row
+behaviors <- behaviors %>%
+  mutate_at(vars(Footprint, Trial, Site), as.factor) %>%
+   rename(
+    Vig = "Time Spent Vigilant",
+    Inv = "Time Spent Investigative",
+    Comf = "Time Spent Comfortable"
+  )
+
+head(behaviors)
+```
+
+After formatting the data with the code above, the data should be ready for analysis.\
+
+## Analysis Overview
+
+For the analysis of the "coyotes" data, we will be using the lme() function from the *nlme* package. This function fits **linear mixed-effects models**.
+
+### What are linear mixed-effects models?
+
+These models are meant to analyze data which are multilevel/hierarchical, non independent, longitudinal, or correlated. For the data you have collected, we will focus on the fact that it is **multilevel/hierarchical.**
+
+By this, I mean that we have multiple video recordings for each site at both San Luis Obispo and Carrizo. This leads to the observations being non-independent, as we expect the recordings within one site to be more similar to each other than they are to the recordings from different sites.
+
+This means that we have within-site variation and between-site variation, which we need to account for.
+
+### Fixed and Random Effects
+
+Being able to specify fixed and random effects is a major advantage of this model.
+
+A **fixed** **effect** is something that is assumed to be constant among our population of interest. For example, we expect or assume that the effect of human footprint remains the same regardless of the site at which the recording occurs. To simplify fixed effects, these are often the effects we are interested in analyzing. So, as you had noted in our previous meeting, you are interested in how both footprint level and the presence/absence of a stool affect coyotes.
+
+Thus, we will treat **Footprint** and **Trial** as **fixed effects** in our model.
+
+A **random** **effect** is best described as uncontrollable variation in our data, often occurring from the multilevel structure as previously mentioned. To simplify random effects, these are often variables which have an effect on the data, but we are not interested in measuring that effect. In the coyotes data, *site* potentially affects the data by natural differences in things like the environment and the temperature, which we have no control over. As you had noted in our previous meeting, you are not interesting in seeing how coyotes' "boldness" differs from site-to-site.
+
+Thus, we will treat **Site** as a **random** **effect** in our model, so it knows to account for variation between sites.
+
+### Interaction Effect
+
+Another important thing to discuss regarding the analysis is the use of an interaction effect. In the model we will be using, we will specify an interaction effect between Footprint and Trial. Interpreting and understanding interaction effects can get tricky and complicated, even for graduate students like myself.
+
+This is the best way I can think to describe an interaction effect between two variables:
+
+**The effect of one predictor variable on the response variable is influenced by the value of the other predictor variable.**
+
+So, in the context of the coyotes data, this is how an interaction could look. This example is not based on any analysis, it is just to explain an interaction.
+
+Let's say that for Carrizo (footprint level 1), the presence of a stool greatly affects coyotes. Without a stool, they are most likely to be on the bait, however, when a stool is present, they are most likely to stay far from the bait.
+
+Now, for San Luis Obispo (footprint level 10), let's say the presence of a stool does not affect coyotes, as they are used to humans and do not get scared as easily. Both with and without a stool, they are likely to be on the bait.
+
+In this situation, we see that the effect of the stool (Trial) changes based on which location (Footprint) we are at. This would indicate an interaction effect between Trial and Footprint.
+
+Now let's say that in San Luis Obispo, the coyotes were likely to be on the bait without a stool and likely to be far from the bait with a stool. In this instance, the effect of the stool (Trial) would be the same for both Carrizo and San Luis Obispo, indicating that there is no evidence of an interaction effect between Trial and Footprint.
+
+## Distance Models
+
+The following code will show how to analyze the data from the "distance" sheet. This will provide a template for analyzing the data and interpreting the results. The "behaviors" sheet should be treated similarly.
+
+The basic format for the models will be:
+
+lme(**response** \~ Footprint \* Trial, random = \~1\|Site, data = **sheet**)
+
+The **response** variable should be replaced with whichever column you are hoping to analyze. This could be time spent on bait, time spent close to bait, time spent far from bait, time spent vigilant, time spent comfortable, or time spent investigative.
+
+The **sheet** option should be either *distance* or *behaviors*, depending on which sheet the response variable comes from.
+
+Additionally, the \* between Footprint and Trial indicates that we are interested in testing for an interaction effect. If we do not want to test for that effect, we should use a + instead of a \*.
+
+### Incorrect Analysis
+
+The code below indicates incorrect analysis. Do not replicate this for your project. This is simply showing why we chose the final model, which will be shown after this.
+
+```{r}
+model_on <- lme(On ~ Footprint * Trial, random = ~1|Site, data = distance)
+summary(model_on)
+```
+
+```{r}
+# Check Model Assumptions
+# Residuals vs. Fitted plot
+plot(model_on, resid(., type = "p") ~ fitted(.), main = "Residuals vs Fitted")
+
+# Normal Q-Q plot for residuals
+qqnorm(residuals(model_on, type = "p"))
+qqline(residuals(model_on, type = "p"), col = "red")
+
+# Standardized residuals
+standardized_resid <- residuals(model_on, type = "pearson")
+
+# Plot standardized residuals
+plot(standardized_resid, main = "Standardized Residuals")
+abline(h = c(-2, 2), col = "red", lty = 2)
+```
+
+From this initial analysis, we can see that there appears to be some fanning in the Residuals vs Fitted plot. This is not a good sign. Additionally, there is some curvature in the normal q-q plot. Ideally, we would want the dots to stay close to the red line.
+
+Without getting into all the technical details, this indicates to us that we most likely have to transform the response variable. A popular method of doing this is to take the log of the response. This is done through the log() function. An advantage of this is that it can stabilize the variance in our data and deal with right-skewness in our response variable (which is the case in our data).
+
+#### **Considerations of a Log Transformation**
+
+Usually, in a linear model, the main effects can be interpreted as:
+
+"After adjusting for all other predictors, for a one unit increase in x, we expect y to increase/decrease by \_\_\_\_ amount"
+
+This means that the coefficient estimates for our explanatory variables usually have an additive effect. However, with a log transformation, now they have a multiplicative effect.
+
+In our model, the log transformation will look like **log(response + 1).** The "+1" just makes sure that there are no 0 values.
+
+To deal with and interpret a coefficient estimate in a log-transformed model, we need to exponentiate our coefficient estimate.
+
+For example, let's say the coefficient estimate for Footprint is .5 on the log scale and Footprint level 1 is our reference level.
+
+```{r}
+# back transform the log-scale coefficient estimate 
+exp(.5)
+```
+
+After back-transforming, we have a new estimate of 1.65. We can interpret this by saying:
+
+"When Footprint changes from level 1 to level 10, and Trial is held constant at its reference level (Baseline), the expected time spent on bait is multiplied by 1.65."
+
+```{r}
+# turn back-transformed estimate into a percentage
+(1.65 - 1) * 100
+```
+
+Instead of using the idea of multiplication, we can also speak about the effect in terms of its percentages.
+
+"When Footprint changes from level 1 to level 10, and Trial is held constant at its reference level (Baseline), the expected time on bait increases by 65 percent."
+
+### Analysis with log of response
+
+### On Bait
+
+```{r}
+# specify the model with an interaction
+model_log_on <- lme(log(On + 1) ~ Footprint * Trial, random = ~1|Site, data = distance)
+```
+
+```{r}
+# get model summary and check coefficient estimates
+summary(model_log_on)
+
+# check statistical significance of model effects
+Anova(model_log_on, type = "III")
+```
+
+From the Anova output, we see that Footprint has a statistically significant effect on the coyotes' time spent on bait. This is seen through the p-value of .006, which is less than .05. However, Trial and the interaction effect between Footprint and Trial do not seem to have a statistically significant effect on the coyotes' time spent on bait.
+
+```{r}
+# model without the interaction
+model_log_on_2 <- lme(log(On + 1) ~ Footprint + Trial, random = ~1|Site, data = distance)
+Anova(model_log_on_2, type = "II")
+summary(model_log_on_2)
+```
+
+Without the interaction term, the model becomes much simpler and is easier to interpret. Additionally, we can see that now, both Footprint and Trial are statistically significant in terms of their effect on the time spent on bait.
+
+From the third panel, the coefficient estimates on the log-scale are:
+
+-   Footprint(10) : 1.157
+
+-   Trial(Treatment) : -1.018
+
+```{r}
+# back transform the log-scale coefficient estimates
+exp(1.157)
+exp(-1.018)
+```
+
+```{r}
+# change estimates to percentages
+(3.18 - 1) * 100
+(.36 - 1) * 100
+```
+
+After back-transforming, these coefficient estimates are now:
+
+-   Footprint(10): 3.18
+
+-   Trial(Treatment): .36
+
+Here is how we can interpret these estimates:
+
+-   Footprint
+
+    -   When holding Trial (stool/no stool) constant, a footprint of level 10 (Slo) is associated with multiplying the expected time (seconds) spent on bait by 3.18 compared to a footprint level of 1 (Carrizo).
+
+    -   When holding Trial (stool/no stool) constant, a footprint of level 10 (Slo) is associated with increasing the expected time (seconds) spent on bait by 218% compared to a footprint level of 1 (Carrizo).
+
+-   Trial
+
+    -   When holding Footprint (Carrizo, Slo) constant, the presence of a stool is associated with multiplying the expected time (seconds) spent on bait by .36 compared to when there is no stool.
+
+    -   When holding Footprint (Carrizo, Slo) constant, the presence of a stool is associated with decreasing the expected time (seconds) spent on bait by 64% compared to when there is no stool.
+
+### Predicted Time Spent on Bait
+
+Another way to look at the results of the model is through the emmeans() function, which shows the predicted responses for different levels of our categorical explanatory variables.
+
+```{r}
+emmeans_both <- emmeans(model_log_on_2, ~ Footprint + Trial, type = "response")
+summary(emmeans_both)
+# get pairwise comparisons
+pairs(emmeans_both, type = "response")
+```
+
+For example, we can look at the combinations of footprint and trial.
+
+For each coyote appearance in Carrizo (footprint level 1) and without the presence of a stool, the predicted amount of time spent on bait is 2.588 seconds.
+
+```{r}
+emmeans_trial <- emmeans(model_log_on_2, ~ Trial, type = "response")
+emmeans_trial
+pairs(emmeans_trial, type = "response")
+```
+
+```{r}
+emmeans_footprint <- emmeans(model_log_on_2, ~ Footprint, type = "response")
+emmeans_footprint
+pairs(emmeans_footprint, type = "response")
+```
+
+We can also look at the explanatory variables individually, which is shown with the two code chunks above. This just shows the predicted amount of time spent on bait for each level of footprint or trial.
+
+```{r}
+# plot the predicted responses
+plot(emmeans_both)
+plot(emmeans_trial)
+plot(emmeans_footprint)
+```
+
+## Generalizability
+
+We are only able to generalize the results of this data to the population from which it came from, as well as any situations or scenarios which may be nearly identical. For example, because the areas of Slo and Carrizo were used, we can only generalize these results to the areas of Slo and Carrizo, or any areas which have similar 1 and 10 footprint levels and similar characteristics in terms of the environment. However, we should be cautious if trying to generalize outside of Slo and Carrizo. Additionally, we must consider the fact that the presence/absence of a stool was used as a factor, and we cannot assume the results would be the same if a different object was used.
+
+Regarding the other analysis, I recommend modeling the other response variables in a near identical fashion to what I have just shown. I don't believe an interaction effect should be used in these models, as I did not find any significant interaction effects in any of the models when I tested them. A basic set-up of the other models are in the code chunks below, but you should add code to back-transform the estimates and to find the predicted responses which we went over previously.
+
+## Other Analysis
+
+### Time Spent Close to Bait
+
+```{r}
+model_close <- lme(log(Close + 1) ~ Footprint + Trial, random = ~1|Site, data = distance)
+Anova(model_close, type = "II")
+summary(model_close)
+```
+
+### Time Spent Far from Bait
+
+```{r}
+model_log_far <- lme(log(Far + 1) ~ Footprint + Trial, random = ~1|Site, data = distance)
+Anova(model_log_far, type = "II")
+summary(model_log_far)
+```
+
+### Time Spent Vigilant
+
+```{r}
+model_vigilant <- lme(log(Vig + 1) ~ Footprint + Trial, random = ~1|Site, data = behaviors)
+Anova(model_vigilant, type = "II")
+summary(model_vigilant)
+```
+
+### Time Spent Comfortable
+
+```{r}
+model_comf <- lme(log(Comf + 1) ~ Footprint + Trial, random = ~1|Site, data = behaviors)
+Anova(model_comf, type = "II")
+summary(model_comf)
+```
+
+### Time Spent Investigative
+
+```{r}
+model_inv <- lme(log(Inv + 1) ~ Footprint + Trial, random = ~1|Site, data = behaviors)
+Anova(model_inv, type = "II")
+summary(model_inv)
+```
+
+## P-value adjustment
+
+One thing to take into consideration is an adjustment method for multiple comparisons to control the family-wise error rate. This is done when we are conducting multiple hypothesis tests. In this instance, because there are 6 models and we are essentially testing for 2 effects each time (Footprint and Trial), we have 12 tests (p-values).
+
+Often, we want to account for this through some form of adjustment, as this will help us decrease the chances of incorrectly assuming significance in a situation where there is none.
+
+To do this, we could put all of the p-values into a vector and use the p.adjust() function, choosing a method of "bonferroni" or "BH" for Benjamini-Hochberg.
+
+```{r}
+# Example p-values from 12 hypothesis tests
+p.values <- c(0.01, 0.04, 0.03, 0.05, 0.02, 0.01, 0.07, 0.06, 0.04, 0.05, 0.02, 0.03)
+
+# Adjust p-values using Bonferroni correction
+p.adjusted_bonferroni <- p.adjust(p.values, method = "bonferroni")
+p.adjusted_bonferroni
+
+# Adjust p-values using Benjamini-Hochberg correction
+p.adjusted_bh <- p.adjust(p.values, method = "BH")
+p.adjusted_bh
+```
+
+Alternatively, we could choose to test the effects with a smaller alpha level, such as .01 instead of .05. This would reduce the power of our tests and increase the chance of Type II errors (False Negatives).
+
+## Conclusion
+
+Overall, I hope this document provides sufficient help to analyze and interpret the coyotes data. A thorough example and description of modeling the time spent on bait was discussed, which should provide a template for the analysis of the other 5 responses. With that being said, if you do have any questions, please feel free to reach out and email me, and I will try to help you as quick as I can!
